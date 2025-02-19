@@ -1,8 +1,11 @@
-# Custom Dialect and Pass
-This branch contains the code and resources for the blog post on [Understanding MLIR Passes Through a Simple Dialect Transformation](https://medium.com/@60b36t/understanding-mlir-passes-through-a-simple-dialect-transformation-879ca47f504f).
-The blog explores how to implement a simple custom conversion pass in 
-MLIR to lower operations from the custom dialect to arith dialect.
+# MLIR Symbol Table Primer
 
+This repository contains the code and resources for the blog post "A Primer on MLIR's Symbol Table". It explores how to use MLIR's symbol infrastructure, including:
+
+    Defining symbols in a custom dialect
+    Managing named operations using mlir::SymbolTable
+    Looking up symbols efficiently in MLIR
+    
 ## Building the Project
 ```sh
 git clone https://github.com/johnmaxrin/BlogCodeBase.git
