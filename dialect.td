@@ -14,17 +14,32 @@ def MyDialect : Dialect {
 }
 
 
-class MyDialectOp<string mnemonic> : Op<MyDialect, mnemonic>
+class MyDialectOp<string mnemonic, list<Trait> traits = []> : Op<MyDialect, mnemonic, traits>
 {
   let summary = "Operation Class";
 }
 
-def MyDialect_Const : MyDialectOp<"const">
+def MyDialect_FuncOp : MyDialectOp<"func",[IsolatedFromAbove, SymbolTable, Symbol]>
 {
-  let summary = "Returns a constant"; 
+    let summary = "Defines a function in the Starplat Dialect";
+    let description = [{This operation represents a function definiton in the Starplat dialect.
+                        It contains a name, other related arguments and an optional return type.
+                        It has a single region for the function body.
+                        }];
+
+  let arguments = (ins 
+                    SymbolNameAttr:$sym_name,
+                    TypeAttrOf<FunctionType>:$funcType
+                  );
+
+  let regions = (region AnyRegion:$body);
+
 }
 
-def convertmydialect2arith : Pass<"convert-mydialect-to-arith", "mlir::ModuleOp">{
-    let summary = "Convert our dialect operations to arith dialect";
-    let dependentDialects = ["mlir::mydialect::MyDialect"];
+def MyDialect_Const : MyDialectOp<"const", [Symbol]>
+{
+  let summary = "Returns a constant"; 
+  let arguments = (ins SymbolNameAttr:$sym_name);
+  let results = (outs AnyType);
 }
+

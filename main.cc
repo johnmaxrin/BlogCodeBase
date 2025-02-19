@@ -65,38 +65,6 @@ namespace mlir
 
 }
 
-namespace mlir
-{
-    namespace mydialect
-    {
-#define GEN_PASS_DEF_CONVERTMYDIALECT2ARITH
-#include "Passes.h.inc"
-    } // namespace mydialect
-} // namespace mlir
-
-struct convertmydialect2arith : public mlir::mydialect::impl::convertmydialect2arithBase<convertmydialect2arith>
-{
-    using convertmydialect2arithBase::convertmydialect2arithBase;
-    void runOnOperation() override
-    {
-        auto mod = getOperation();
-        mod->walk([&](mlir::mydialect::Const constOpIter)
-                  {
-                OpBuilder b(constOpIter);
-
-                auto newOp = b.create<mlir::arith::ConstantOp>(b.getUnknownLoc(), b.getI32Type(),
-      b.getI32IntegerAttr(33)); 
-
-            
-            constOpIter->replaceAllUsesWith(newOp);
-            constOpIter->erase();
-            
-      });
-
-        
-    
-    }
-};
 
 int main()
 {
@@ -106,32 +74,31 @@ int main()
     context.getOrLoadDialect<func::FuncDialect>();
     context.getOrLoadDialect<arith::ArithDialect>();
 
-    PassManager pm(&context);
 
     OwningOpRef<ModuleOp> module = ModuleOp::create(UnknownLoc::get(&context));
     OpBuilder builder(&context);
 
-    auto funcType = builder.getFunctionType({}, {});
-    auto funcOp = builder.create<func::FuncOp>(builder.getUnknownLoc(), "main", funcType);
 
+    auto funcType = builder.getFunctionType({}, {});
+    auto funcOp = builder.create<mydialect::FuncOp>(builder.getUnknownLoc(), "main", funcType);
     module->push_back(funcOp);
-    Block *entryBlock = funcOp.addEntryBlock();
-    builder.setInsertionPointToStart(entryBlock);
-    builder.create<mydialect::Const>(builder.getUnknownLoc());
+    
+    auto &entryBlock = funcOp.getBody().emplaceBlock();
+    builder.setInsertionPointToStart(&entryBlock);
+
+    mlir::SymbolTable symbolTable(funcOp);
+
+    auto constOp = builder.create<mydialect::Const>(builder.getUnknownLoc(), builder.getI32Type(),builder.getStringAttr("my_var"));
+
+    symbolTable.insert(constOp);
+
 
     builder.create<func::ReturnOp>(builder.getUnknownLoc());
 
-    module->dump();
-    verify(module.get());
-
-    pm.addPass(createconvertmydialect2arith());
-    if (failed(pm.run(*module)))
-    {
-        llvm::errs() << "Failed to run passes\n";
-        return 1;
+    if(auto found = symbolTable.lookup("my_var")){
+        llvm::outs() << "Found: " << found->getName() <<"\n";
     }
 
-    module->dump();
 
     return 0;
 }
