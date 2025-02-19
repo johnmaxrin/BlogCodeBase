@@ -7,7 +7,7 @@ MLIR to lower operations from the custom dialect to arith dialect.
 ```sh
 git clone https://github.com/johnmaxrin/BlogCodeBase.git
 cd BlogCodeBase
-git checkout convertmydialect2arith
+git checkout symboltableprimer
 ```
 
 ## Build the project using CMake:
