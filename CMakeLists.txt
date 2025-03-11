@@ -59,4 +59,6 @@ PRIVATE
     MLIRIR
     MLIRParser
     MLIRPass
+    MLIRTransforms
+    MLIROpenMPToLLVM
           )
