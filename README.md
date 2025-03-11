@@ -1,24 +1,24 @@
-# Arith to LLVM Conversion
-This branch contains the code and resources for the blog post on [Converting Arith to LLVM using MLIR](https://medium.com/@60b36t/converting-arith-dialect-to-llvm-dialect-in-mlir-8b393615b54d). The blog explores how to implement a simple conversion pass in 
-MLIR to lower operations from the arith dialect to the llvm dialect, enabling efficient code generation for LLVM-based backends.
+# Emitting OpenMP Code from MLIR and Lowering to LLVM IR
+This repository demonstrates how to emit OpenMP (omp) code using the MLIR OpenMP dialect, lower it to LLVM IR, and generate an executable binary.
 
-## Building the Project
-Clone the repository and switch to this branch:
+### Build and Compilation Steps
+- Set Up the MLIR Context
+Ensure that Clang and OpenMP are installed and configured.
 
+- Generate LLVM IR from MLIR
 ```sh
-git clone https://github.com/johnmaxrin/BlogCodeBase.git
-cd BlogCodeBase
-git checkout arith2llvm
+mlir-translate --mlir-to-llvmir output.mlir -o output.ll
 ```
 
-Build the project using CMake:
+- Compile with Clang
 ```sh
-mkdir build && cd build
-cmake .. && make
+clang output.ll -o a.out -fopenmp
 ```
 
-## How to Run
+- Run the Executable
 ```sh
-cd build/bin
-./app
+./a.out
 ```
+
+- Expected Output
+The program prints "Hello World" multiple times, depending on the number of OpenMP threads available.
