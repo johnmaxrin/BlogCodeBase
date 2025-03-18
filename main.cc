@@ -29,25 +29,13 @@ int main()
   mlir::OpBuilder builder(&context);
   mlir::ModuleOp module = builder.create<mlir::ModuleOp>(builder.getUnknownLoc());
 
+
+
   auto ukwnloc = builder.getUnknownLoc();
 
-  auto i8Type = builder.getI8Type();
-  auto i8PtrType = mlir::LLVM::LLVMPointerType::get(&context);
+  // Createa a strucutural type
 
-  const char *str = "Hello World\n\0";
-  size_t len = strlen(str);
 
-  auto arrayType = mlir::LLVM::LLVMArrayType::get(i8Type, len);
-
-  auto globalStr = builder.create<mlir::LLVM::GlobalOp>(ukwnloc, arrayType, true, mlir::LLVM::Linkage::Internal, ".str", builder.getStringAttr(str));
-
-  module.push_back(globalStr);
-
-  // Define Printf
-  auto printfType = mlir::LLVM::LLVMFunctionType::get(i8PtrType, {i8PtrType}, true);
-  auto printfFunc = builder.create<mlir::LLVM::LLVMFuncOp>(ukwnloc, "printf", printfType);
-
-  module.push_back(printfFunc);
 
   auto int32Ty = builder.getI32Type();
 
@@ -60,27 +48,18 @@ int main()
 
   builder.setInsertionPointToStart(block);
 
-  auto zero = builder.create<mlir::LLVM::ConstantOp>(ukwnloc, int32Ty, builder.getI32IntegerAttr(0));
-  auto one = builder.create<mlir::LLVM::ConstantOp>(ukwnloc, int32Ty, builder.getI32IntegerAttr(1));
-  auto strPtr = builder.create<mlir::LLVM::AddressOfOp>(ukwnloc, globalStr);
+  auto structType = LLVM::LLVMStructType::getIdentified(&context, "Graph");
+  structType.setBody({builder.getI32Type()},false);
 
-  auto gep = builder.create<mlir::LLVM::GEPOp>(ukwnloc, i8PtrType, arrayType, strPtr, mlir::ValueRange{zero, zero});
+  Type structPtrType = LLVM::LLVMPointerType::get(&context);
 
- 
-  mlir::Location dummyLoc = mlir::FileLineColLoc::get(builder.getStringAttr("dummy.mlir"), 0, 0);
-  auto parallelOp = builder.create<mlir::omp::ParallelOp>(dummyLoc);
-  auto &parallelRegion = parallelOp.getRegion();
-  auto *parallelBlock = builder.createBlock(&parallelRegion);
-  builder.setInsertionPointToStart(parallelBlock);
 
-  // USE GEP
-  // auto gep = builder.create<mlir::LLVM::GEPOp>(ukwnloc, i8PtrType, arrayType, strPtr, mlir::ValueRange{zero,zero});
-  builder.create<mlir::LLVM::CallOp>(ukwnloc, printfFunc, mlir::ValueRange{gep});
-  builder.create<mlir::omp::TerminatorOp>(ukwnloc);
-  builder.setInsertionPointAfter(parallelOp);
+  auto one = builder.create<LLVM::ConstantOp>(ukwnloc, builder.getI64Type(), builder.getI64IntegerAttr(1));
 
-  // Return 33
-  // Creare 33
+
+  auto graphDecl = builder.create<mlir::LLVM::AllocaOp>(ukwnloc, structPtrType, structType, one);
+
+
   auto constOp = builder.create<mlir::LLVM::ConstantOp>(ukwnloc, int32Ty, builder.getI32IntegerAttr(33));
   auto retOp = builder.create<mlir::LLVM::ReturnOp>(ukwnloc, constOp->getResult(0));
 
@@ -98,7 +77,10 @@ int main()
     return 1;
   }
   // Print the MLIR code to stdout
-  module->dump();
+  std::error_code error;
+  llvm::raw_fd_ostream outputFile("output.mlir", error);
+  module.print(outputFile);
+  outputFile.close();
 
   return 0;
 }
