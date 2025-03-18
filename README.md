@@ -1,5 +1,5 @@
-# Emitting OpenMP Code from MLIR and Lowering to LLVM IR
-This repository demonstrates how to emit OpenMP (omp) code using the MLIR OpenMP dialect, lower it to LLVM IR, and generate an executable binary.
+# Generating and Lowering Structs in MLIR to LLVM IR
+This repository demonstrates how to define and emit structured types (structs) in MLIR, lower them to LLVM IR, and generate an executable binary. The example covers creating an MLIR structure, allocating it, and compiling it into LLVM IR.
 
 ### Build and Compilation Steps
 - Set Up the MLIR Context
@@ -20,5 +20,3 @@ clang output.ll -o a.out -fopenmp
 ./a.out
 ```
 
-- Expected Output
-The program prints "Hello World" multiple times, depending on the number of OpenMP threads available.
