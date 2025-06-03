@@ -1,6 +1,10 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"   
+#include "mlir/Conversion/Passes.h"
+
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
@@ -9,6 +13,15 @@
 // Conversions
 
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
+#include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
+#include "mlir/Conversion/GPUCommon/GPUToLLVM.h"
+
+#include "mlir/Dialect/GPU/Transforms/Passes.h"
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
+
+#include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+
+
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/Pass.h"
 
@@ -46,14 +59,15 @@ int main() {
   builder.setInsertionPointToStart(entryBlock);
 
   // Create a constant value of 1
-  auto constOp = builder.create<arith::ConstantIndexOp>(
-      builder.getUnknownLoc(),1);
-  
+  auto constoneOp = builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(1));
+
+  auto castRetOp = builder.create<arith::IndexCastOp>(builder.getUnknownLoc(), builder.getIndexType(), constoneOp.getResult());
+
   auto constRetOp = builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(42));
 
 
   auto kernelLaunchOp = builder.create<gpu::LaunchOp>(
-    builder.getUnknownLoc(), constOp.getResult(), constOp.getResult(), constOp.getResult(), constOp.getResult(), constOp.getResult(), constOp.getResult() );
+    builder.getUnknownLoc(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult() );
   
   mlir::Region &body = kernelLaunchOp.getBody();
   mlir::Block *block = &body.front();
@@ -79,10 +93,24 @@ int main() {
   // Print the MLIR code to stdout
   module->dump();
 
+  mlir::ConversionTarget target(context);
+  mlir::LLVMTypeConverter typeConverter(&context);
 
+ 
+
+
+  // Create and populate the pattern rewriter
+  mlir::RewritePatternSet patterns(&context);
+  mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);  
   // All about Pass
   PassManager pm(&context);
   pm.addPass(createArithToLLVMConversionPass());
+  pm.addPass(createConvertFuncToLLVMPass());
+  pm.addPass(createGpuKernelOutliningPass());
+
+
+
+ 
 
   if (mlir::failed(pm.run(*module))) {
     llvm::errs() << "Failed to convert to LLVM dialect\n";
@@ -90,6 +118,18 @@ int main() {
   }
 
 
+  module->dump();
+
+  // Only GPU
+  PassManager pm2(&context);
+  pm2.nest("gpu.module").addPass(createConvertGpuOpsToNVVMOps());
+  pm2.addPass(createReconcileUnrealizedCastsPass());
+
+  
+  if (mlir::failed(pm2.run(*module))) {
+    llvm::errs() << "Failed to convert to LLVM dialect\n";
+    return 1;
+  }
   module->dump();
 
   return 0;
