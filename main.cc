@@ -10,18 +10,32 @@
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Dialect/GPU/Transforms/Passes.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
+#include "mlir/Target/LLVM/NVVM/Target.h"
+
 #include "mlir/IR/Verifier.h"
 // Conversions
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
-#include "mlir/Conversion/GPUCommon/GPUToLLVM.h"
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
+#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/UBToLLVM/UBToLLVM.h"
 #include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/Pass.h"
+
+#include "mlir/Target/LLVM/NVVM/Target.h"
+#include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
+#include "mlir/Target/LLVMIR/Dialect/GPU/GPUToLLVMIRTranslation.h"
+
 
 // Extension registration headers
 #include "mlir/Dialect/Func/Extensions/AllExtensions.h"
@@ -42,12 +56,19 @@ int main() {
   // Register only the func extensions in a registry and apply it
   DialectRegistry registry;
   registerConvertNVVMToLLVMInterface(registry);
+  
   registerConvertFuncToLLVMInterface(registry);
   cf::registerConvertControlFlowToLLVMInterface(registry);
   arith::registerConvertArithToLLVMInterface(registry);
   registerConvertMemRefToLLVMInterface(registry);
+  NVVM::registerNVVMTargetInterfaceExternalModels(registry);
+  
   func::registerAllExtensions(registry);
   context.appendDialectRegistry(registry);
+  mlir::registerNVVMDialectTranslation(registry);
+  mlir::registerLLVMDialectTranslation(registry);
+  mlir::registerGPUDialectTranslation(registry);
+  
   
   // Create a module
   OwningOpRef<ModuleOp> module = ModuleOp::create(UnknownLoc::get(&context));
@@ -109,24 +130,28 @@ int main() {
   // First pass: Convert func and arith, and outline GPU kernels
   PassManager pm(&context);
   pm.addPass(createGpuKernelOutliningPass());
-  pm.addPass(createConvertFuncToLLVMPass());
+  pm.nest<mlir::gpu::GPUModuleOp>().addPass(createConvertGpuOpsToNVVMOps());
+  GpuNVVMAttachTargetOptions gputargetOptions;
+  gputargetOptions.chip = "sm_90";
+  gputargetOptions.triple = "nvptx64-nvidia-cuda";
+  pm.addPass(createGpuNVVMAttachTarget(gputargetOptions));
+  
   pm.addPass(createArithToLLVMConversionPass());
+  pm.addPass(createConvertIndexToLLVMPass());
+  pm.addPass(createUBToLLVMConversionPass());
+
+  
+  
+  
+  pm.addPass(createConvertNVVMToLLVMPass());
+  pm.addPass(createConvertToLLVMPass());
+  pm.addPass(createGpuModuleToBinaryPass());
+  pm.addPass(createGpuToLLVMConversionPass());
+  
+  pm.addPass(createConvertFuncToLLVMPass());
   pm.addPass(createReconcileUnrealizedCastsPass());
   
   if (mlir::failed(pm.run(*module))) {
-    llvm::errs() << "Failed to convert to LLVM dialect\n";
-    return 1;
-  }
-  
-  llvm::outs() << "\n=== After Func/Arith Conversion ===\n";
-  module->dump();
-  
-  // Second pass: Convert GPU operations to NVVM
-  PassManager pm2(&context);
-  pm2.nest("gpu.module").addPass(createConvertGpuOpsToNVVMOps());
-  pm2.addPass(createReconcileUnrealizedCastsPass());
-  
-  if (mlir::failed(pm2.run(*module))) {
     llvm::errs() << "Failed to convert GPU to NVVM\n";
     return 1;
   }
