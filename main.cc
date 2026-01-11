@@ -4,133 +4,135 @@
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Conversion/LLVMCommon/TypeConverter.h"   
 #include "mlir/Conversion/Passes.h"
-
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
 #include "mlir/Dialect/GPU/IR/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+#include "mlir/Dialect/LLVMIR/NVVMDialect.h"
 #include "mlir/IR/Verifier.h"
-
 // Conversions
-
 #include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
 #include "mlir/Conversion/GPUToNVVM/GPUToNVVMPass.h"
 #include "mlir/Conversion/GPUCommon/GPUToLLVM.h"
-
 #include "mlir/Dialect/GPU/Transforms/Passes.h"
 #include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-
+#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVM.h"
+#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
 #include "mlir/Conversion/ReconcileUnrealizedCasts/ReconcileUnrealizedCasts.h"
-
-
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Pass/Pass.h"
+
+// Extension registration headers
+#include "mlir/Dialect/Func/Extensions/AllExtensions.h"
 
 using namespace mlir;
 
 int main() {
-  // Create an MLIR context
-  MLIRContext context;
-
-  // Load the required dialects
-  context.getOrLoadDialect<arith::ArithDialect>();
-  context.getOrLoadDialect<func::FuncDialect>();
-  context.getOrLoadDialect<gpu::GPUDialect>();
-
+  // Create an MLIR context and enable multi-threading
+  MLIRContext context(MLIRContext::Threading::DISABLED);
+  
+  // Register dialects FIRST before creating any operations
+  context.loadDialect<arith::ArithDialect>();
+  context.loadDialect<func::FuncDialect>();
+  context.loadDialect<gpu::GPUDialect>();
+  context.loadDialect<LLVM::LLVMDialect>();
+  context.loadDialect<NVVM::NVVMDialect>();
+  
+  // Register only the func extensions in a registry and apply it
+  DialectRegistry registry;
+  registerConvertNVVMToLLVMInterface(registry);
+  registerConvertFuncToLLVMInterface(registry);
+  cf::registerConvertControlFlowToLLVMInterface(registry);
+  arith::registerConvertArithToLLVMInterface(registry);
+  registerConvertMemRefToLLVMInterface(registry);
+  func::registerAllExtensions(registry);
+  context.appendDialectRegistry(registry);
+  
   // Create a module
   OwningOpRef<ModuleOp> module = ModuleOp::create(UnknownLoc::get(&context));
-
+  
   // Create a builder to help with constructing operations
   OpBuilder builder(&context);
-
+  
   // Define the function type (takes no arguments, returns i32)
   auto funcType = builder.getFunctionType({}, builder.getI32Type());
-
+  
   // Create a function named "main"
   auto funcOp = builder.create<func::FuncOp>(
       builder.getUnknownLoc(), "main", funcType);
-
+  
   // Add the function to the module
   module->push_back(funcOp);
-
+  
   // Create a new block inside the function
   Block *entryBlock = funcOp.addEntryBlock();
-
+  
   // Set the insertion point to the start of the block
   builder.setInsertionPointToStart(entryBlock);
-
+  
   // Create a constant value of 1
-  auto constoneOp = builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(1));
-
-  auto castRetOp = builder.create<arith::IndexCastOp>(builder.getUnknownLoc(), builder.getIndexType(), constoneOp.getResult());
-
-  auto constRetOp = builder.create<arith::ConstantOp>(builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(42));
-
-
+  auto constoneOp = builder.create<arith::ConstantOp>(
+      builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(1));
+  auto castRetOp = builder.create<arith::IndexCastOp>(
+      builder.getUnknownLoc(), builder.getIndexType(), constoneOp.getResult());
+  auto constRetOp = builder.create<arith::ConstantOp>(
+      builder.getUnknownLoc(), builder.getI32Type(), builder.getI32IntegerAttr(42));
+  
   auto kernelLaunchOp = builder.create<gpu::LaunchOp>(
-    builder.getUnknownLoc(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult() );
+      builder.getUnknownLoc(), 
+      castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult(), 
+      castRetOp.getResult(), castRetOp.getResult(), castRetOp.getResult());
   
   mlir::Region &body = kernelLaunchOp.getBody();
   mlir::Block *block = &body.front();
-
   builder.setInsertionPointToStart(block);
-
-  builder.create<gpu::PrintfOp>(builder.getUnknownLoc(), builder.getStringAttr("Hi There: "), mlir::ValueRange{});
+  builder.create<gpu::PrintfOp>(
+      builder.getUnknownLoc(), 
+      builder.getStringAttr("Hi There: "), 
+      mlir::ValueRange{});
   builder.create<mlir::gpu::TerminatorOp>(builder.getUnknownLoc());
-
-  
   builder.setInsertionPointToEnd(entryBlock);
+  
   // Return the constant value
   builder.create<func::ReturnOp>(builder.getUnknownLoc(), constRetOp.getResult());
-
-  if(failed(verify(module.get())))
-    {
-        llvm::errs()<<"Error: Verification Failed\n";
-        return 0;
-    }
-
-
-
+  
+  if(failed(verify(module.get()))) {
+    llvm::errs() << "Error: Verification Failed\n";
+    return 0;
+  }
+  
   // Print the MLIR code to stdout
+  llvm::outs() << "=== Original Module ===\n";
   module->dump();
-
-  mlir::ConversionTarget target(context);
-  mlir::LLVMTypeConverter typeConverter(&context);
-
- 
-
-
-  // Create and populate the pattern rewriter
-  mlir::RewritePatternSet patterns(&context);
-  mlir::arith::populateArithToLLVMConversionPatterns(typeConverter, patterns);  
-  // All about Pass
+  
+  // First pass: Convert func and arith, and outline GPU kernels
   PassManager pm(&context);
-  pm.addPass(createArithToLLVMConversionPass());
-  pm.addPass(createConvertFuncToLLVMPass());
   pm.addPass(createGpuKernelOutliningPass());
-
-
-
- 
-
+  pm.addPass(createConvertFuncToLLVMPass());
+  pm.addPass(createArithToLLVMConversionPass());
+  pm.addPass(createReconcileUnrealizedCastsPass());
+  
   if (mlir::failed(pm.run(*module))) {
     llvm::errs() << "Failed to convert to LLVM dialect\n";
     return 1;
   }
-
-
+  
+  llvm::outs() << "\n=== After Func/Arith Conversion ===\n";
   module->dump();
-
-  // Only GPU
+  
+  // Second pass: Convert GPU operations to NVVM
   PassManager pm2(&context);
   pm2.nest("gpu.module").addPass(createConvertGpuOpsToNVVMOps());
   pm2.addPass(createReconcileUnrealizedCastsPass());
-
   
   if (mlir::failed(pm2.run(*module))) {
-    llvm::errs() << "Failed to convert to LLVM dialect\n";
+    llvm::errs() << "Failed to convert GPU to NVVM\n";
     return 1;
   }
+  
+  llvm::outs() << "\n=== Final Module (with NVVM) ===\n";
   module->dump();
-
+  
   return 0;
 }
