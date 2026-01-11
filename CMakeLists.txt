@@ -33,7 +33,12 @@ target_link_libraries(app PRIVATE
     MLIRGPUDialect
     MLIRLLVMDialect
     MLIRNVVMDialect
+   
+    MLIRLLVMToLLVMIRTranslation
     
+    MLIRGPUToLLVMIRTranslation
+    
+
     # Conversions
     MLIRArithToLLVM
     MLIRFuncToLLVM
@@ -41,7 +46,8 @@ target_link_libraries(app PRIVATE
     MLIRGPUTransforms
     MLIRReconcileUnrealizedCasts
     MLIRNVVMToLLVM
-    
+    MLIRIndexToLLVM 
+    MLIRUBToLLVM
     # Extensions - ONLY func extensions
     MLIRFuncAllExtensions
     
