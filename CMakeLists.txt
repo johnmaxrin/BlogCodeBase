@@ -1,62 +1,51 @@
-cmake_minimum_required(VERSION 3.20.0)
-project(Avial)
+cmake_minimum_required(VERSION 3.20)
+project(mlir_gpu_example)
 
+find_package(MLIR REQUIRED CONFIG)
+find_package(LLVM REQUIRED CONFIG)
 
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
-  find_package(MLIR REQUIRED CONFIG)
-
-  message(STATUS "Using MLIRConfig.cmake in: ${MLIR_DIR}")
-  message(STATUS "Using LLVMConfig.cmake in: ${LLVM_DIR}")
-
-  set(LLVM_RUNTIME_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/bin)
-  set(LLVM_LIBRARY_OUTPUT_INTDIR ${CMAKE_BINARY_DIR}/lib)
-  set(MLIR_BINARY_DIR ${CMAKE_BINARY_DIR})
-
-  list(APPEND CMAKE_MODULE_PATH "${MLIR_CMAKE_DIR}")
-  list(APPEND CMAKE_MODULE_PATH "${LLVM_CMAKE_DIR}")
-
-  include(TableGen)
-  include(AddLLVM)
-  include(AddMLIR)
-  include(HandleLLVMOptions)
-else()
-  # Build via external projects mechanism
-  set(MLIR_MAIN_SRC_DIR ${LLVM_MAIN_SRC_DIR}/../mlir)
-  set(MLIR_INCLUDE_DIR ${MLIR_MAIN_SRC_DIR}/include)
-  set(MLIR_GENERATED_INCLUDE_DIR ${LLVM_BINARY_DIR}/tools/mlir/include)
-  set(MLIR_INCLUDE_DIRS "${MLIR_INCLUDE_DIR};${MLIR_GENERATED_INCLUDE_DIR}")
-endif()
+message(STATUS "MLIR_DIR: ${MLIR_DIR}")
+message(STATUS "LLVM_DIR: ${LLVM_DIR}")
 
 include_directories(${LLVM_INCLUDE_DIRS})
 include_directories(${MLIR_INCLUDE_DIRS})
-link_directories(${LLVM_BUILD_LIBRARY_DIR})
-add_definitions(${LLVM_DEFINITIONS})
 
-get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-get_property(extension_libs GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
+separate_arguments(LLVM_DEFINITIONS_LIST NATIVE_COMMAND ${LLVM_DEFINITIONS})
+add_definitions(${LLVM_DEFINITIONS_LIST})
 
-# add_compile_options(-fsanitize=address)
-# add_link_options(-fsanitize=address)
+add_executable(app main.cc)
 
-# add_compile_options(-fsanitize=undefined)
-# add_link_options(-fsanitize=undefined)
+set_property(TARGET app PROPERTY CXX_STANDARD 17)
 
-set(NO_RTTI "-fno-rtti")
-add_definitions(${NO_RTTI})
-
-
-
-
-# Add executable and link it with the parser library
-add_llvm_executable(app main.cc)
-target_link_libraries(app 
-
-PRIVATE
-    ${dialect_libs}
+# Link against the correct MLIR library names
+target_link_libraries(app PRIVATE
+    # Core MLIR
+    MLIRSupport
     MLIRIR
     MLIRParser
     MLIRPass
-          )
+    MLIRTransforms
+    MLIRAnalysis
+    
+    # Dialects - use the correct names with "Dialect" suffix
+    MLIRArithDialect
+    MLIRFuncDialect
+    MLIRGPUDialect
+    MLIRLLVMDialect
+    MLIRNVVMDialect
+    
+    # Conversions
+    MLIRArithToLLVM
+    MLIRFuncToLLVM
+    MLIRGPUToNVVMTransforms
+    MLIRGPUTransforms
+    MLIRReconcileUnrealizedCasts
+    MLIRNVVMToLLVM
+    
+    # Extensions - ONLY func extensions
+    MLIRFuncAllExtensions
+    
+    # LLVM libraries
+    LLVMSupport
+    LLVMCore
+)
