@@ -191,6 +191,7 @@ int main() {
   
   // Step 5: Serialize GPU module to binary (PTX/CUBIN)
   pm.addPass(createGpuModuleToBinaryPass());
+  pm.addPass(createGpuToLLVMConversionPass());
   
   // Step 6: Lower host-side operations
   pm.addPass(createArithToLLVMConversionPass());
@@ -201,7 +202,6 @@ int main() {
   
   // Step 7: Convert func and GPU launch ops to LLVM
   pm.addPass(createConvertFuncToLLVMPass());
-  pm.addPass(createGpuToLLVMConversionPass());
   
   // Step 8: Clean up unrealized casts
   pm.addPass(createReconcileUnrealizedCastsPass());
